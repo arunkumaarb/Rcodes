@@ -1,0 +1,255 @@
+---
+title: "MODEL BUILDING"
+output: html_notebook
+---
+
+```{r}
+data = read.csv("Cars.csv",header=TRUE)
+
+data$MBA=ifelse(is.na(data$MBA),0,data$MBA)
+
+data$Gender=ifelse(data$Gender=="Male",1,2)
+data$Transport = factor(data$Transport,levels=c('2Wheeler','Car','Public Transport'),labels = c('TwoWheeler','Car','Public_Transport'))
+data$Age = as.numeric(data$Age)
+data$Gender=as.factor(data$Gender)
+data$Engineer=as.factor(data$Engineer)
+data$MBA=as.factor(data$MBA)
+data$Work.Exp=as.numeric(data$Work.Exp)
+data$Salary=as.numeric(data$Salary)
+data$Distance=as.numeric(data$Distance)
+data$license = as.factor(data$license)
+data$Transport=as.factor(data$Transport)
+```
+
+```{r}
+library(usdm)
+vif(data)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(Boruta)
+set.seed(123)
+boruta.train <- Boruta(Transport ~., data=data, doTrace = 2, maxRuns = 101)
+print(boruta.train)
+```
+
+```{r}
+library(caret)
+set.seed(54321)
+indexes <- createDataPartition(data$Transport,
+                               times = 1,
+                               p = 0.7,
+                               list = FALSE)
+train <- data[indexes,]
+test <- data[-indexes,]
+
+table(train$Transport)
+```
+
+```{r}
+train.control <- trainControl(method = "cv",
+                              number = 10,
+                              verboseIter = T)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+tune.grid=expand.grid(mtry=c(5,6,7,8,9),
+                      min.node.size=1,
+                      splitrule='gini')
+
+
+caret.rf1 <- train(Transport ~ ., 
+                  data = train,
+                  method = "ranger",
+                  metric="Accuracy",trControl=train.control)
+
+pred.rf.train = predict(caret.rf1, train)
+pred.rf1.train = data.frame(pred.rf.train)
+#pred.rf1.train$pred.rf.train = factor(pred.rf1.train$pred.rf.train,levels=c('TwoWheeler','Car','Public_ Transport'),labels = c('TwoWheeler','Car','Public_Transport'))
+
+confusionMatrix(pred.rf1.train$pred.rf.train,train$Transport)
+```
+
+```{r}
+#Prediction
+pred.rf = predict(caret.rf1, test)
+pred.rf1 = data.frame(pred.rf)
+#pred.rf1$pred.rf = factor(pred.rf1$pred.rf,levels=c('TwoWheeler','Car','Public_Transport'),labels = c('TwoWheeler','Car','Public_Transport'))
+
+confusionMatrix(pred.rf1$pred.rf,test$Transport)
+```
+
+```{r include=FALSE}
+#XGBOOST
+caret.xgb <- train(Transport ~ ., 
+                   data = train,
+                   method = "xgbTree",
+                   #tuneGrid = tune.grid,
+                   trControl = train.control,
+                   metric="Accuracy",verboseIter=F)
+
+pred.xgb.train = predict(caret.xgb, train)
+pred.xgb1.train = data.frame(pred.xgb.train)
+#pred.xgb1.train$pred.xgb.train = factor(pred.xgb1.train$pred.xgb.train,levels=c('TwoWheeler','Car','Public_ Transport'),labels = c('TwoWheeler','Car','Public_Transport'))
+
+confusionMatrix(pred.xgb1.train$pred.xgb.train,train$Transport)
+```
+
+```{r}
+pred.xgb = predict(caret.xgb,test)
+pred.xgb1 = data.frame(pred.xgb)
+confusionMatrix(pred.xgb1$pred.xgb,test$Transport)
+```
+```{r}
+caret.svm <- train(Transport ~ ., 
+                   data = train,
+                   method = "svmLinear",
+                   trControl=train.control,
+                   metric="Accuracy")
+
+pred.svm.train = predict(caret.svm, train)
+pred.svm1.train = data.frame(pred.svm.train)
+#pred.xgb1.train$pred.xgb.train = 
+
+confusionMatrix(pred.svm1.train$pred.svm.train,train$Transport)
+```
+
+```{r}
+pred.svm = predict(caret.svm, test)
+pred.svm1 = data.frame(pred.svm)
+confusionMatrix(pred.svm1$pred.svm,test$Transport)
+```
+
+```{r}
+#SAMPLING
+library(DMwR)
+
+set.seed(9560)
+smote_train <- SMOTE(Transport ~ ., data  = train,perc.over = 200,perc.under = 100)
+table(smote_train$Transport)
+```
+
+```{r}
+#SVM
+caret.svm.smote <- train(Transport ~ ., 
+                   data = smote_train,
+                   method = "svmRadial",
+                   trControl=train.control,
+                   metric="Accuracy")
+
+pred.svm.smote = predict(caret.svm.smote, smote_train)
+pred.svm1.smote = data.frame(pred.svm.smote)
+#pred.xgb1.train$pred.xgb.train = 
+
+confusionMatrix(pred.svm1.smote$pred.svm.smote,smote_train$Transport)
+```
+
+```{r}
+pred.svm.smote = predict(caret.svm.smote, test)
+pred.svm.smote1 = data.frame(pred.svm.smote)
+pred.svm.smote1$pred.svm.smote= factor(pred.svm.smote1$pred.svm.smote,levels=c('TwoWheeler','Car','Public_Transport'),labels = c('TwoWheeler','Car','Public_Transport'))
+
+confusionMatrix(pred.svm.smote1$pred.svm.smote,test$Transport)
+
+```
+
+```{r message=FALSE, warning=FALSE}
+#RF
+train.control <- trainControl(method = "cv",
+                              number = 10,
+                              verboseIter = F)
+tune.grid=expand.grid(mtry=c(5,6,7,8),
+                      min.node.size=1,
+                      splitrule='extratrees')
+
+caret.rf.smote <- train(Transport ~ ., 
+                   data = smote_train,
+                   method = "ranger",
+                   metric="Accuracy",trControl=train.control,
+                   tuneGrid=tune.grid)
+
+pred.rf.smote = predict(caret.rf.smote, smote_train)
+pred.rf1.smote = data.frame(pred.rf.smote)
+#pred.xgb1.train$pred.xgb.train = 
+
+confusionMatrix(pred.rf1.smote$pred.rf.smote,smote_train$Transport)
+```
+
+```{r}
+pred.rf.smote = predict(caret.rf.smote, test)
+pred.rf.smote1 = data.frame(pred.rf.smote)
+pred.rf.smote1$pred.svm.smote= factor(pred.rf.smote1$pred.rf.smote,levels=c('TwoWheeler','Car','Public_Transport'),labels = c('TwoWheeler','Car','Public_Transport'))
+
+confusionMatrix(pred.rf.smote1$pred.rf.smote,test$Transport)
+
+```
+
+```{r message=FALSE, warning=FALSE}
+caret.xgb.smote <- train(Transport ~ ., 
+                   data = smote_train,
+                   method = "xgbTree",
+                   #tuneGrid = tune.grid,
+                   trControl = train.control,
+                   metric="Accuracy",verboseIter=F)
+
+pred.xgb.smote = predict(caret.xgb.smote, smote_train)
+pred.xgb1.smote = data.frame(pred.xgb.smote)
+#pred.xgb1.train$pred.xgb.train = 
+
+confusionMatrix(pred.xgb1.smote$pred.xgb.smote,smote_train$Transport)
+```
+
+```{r}
+pred.xgb.smote = predict(caret.xgb.smote, test)
+pred.xgb.smote1 = data.frame(pred.xgb.smote)
+confusionMatrix(pred.xgb.smote1$pred.xgb.smote,test$Transport)
+```
+
+```{r}
+test_new = data.frame('Age'=c(25,25),'Gender'=c('Male','Female'),'Engineer'=c(0,1),
+                  'MBA'=c(0,0),'Work Exp'=c(2,2),'Salary'=c(10,10),'Distance'=c(5,5),
+                  'license'=c(1,0))
+
+test_new$Gender=ifelse(test_new$Gender=="Male",1,2)
+test_new$Age = as.numeric(test_new$Age)
+test_new$Gender=as.factor(test_new$Gender)
+test_new$Engineer=as.factor(test_new$Engineer)
+test_new$MBA=as.factor(test_new$MBA)
+test_new$Work.Exp=as.numeric(test_new$Work.Exp)
+test_new$Salary=as.numeric(test_new$Salary)
+test_new$Distance=as.numeric(test_new$Distance)
+test_new$license = as.factor(test_new$license)
+```
+
+```{r}
+#RF
+pred.rf.train = predict(caret.rf1, test_new)
+pred.rf1.train = data.frame(pred.rf.train)
+pred.rf1.train 
+
+#XGB
+pred.xgb.train = predict(caret.xgb, test_new)
+pred.xgb1.train = data.frame(pred.xgb.train)
+pred.xgb1.train
+
+#SVM
+pred.svm = predict(caret.svm, test_new)
+pred.svm1 = data.frame(pred.svm)
+pred.svm1
+
+#SVM SMOTE
+pred.svm.smote = predict(caret.svm.smote, test_new)
+pred.svm.smote1 = data.frame(pred.svm.smote)
+pred.svm.smote1
+
+#RF SMOTE
+pred.rf.smote = predict(caret.rf.smote, test_new)
+pred.rf1.smote = data.frame(pred.rf.smote)
+pred.rf1.smote
+
+#XGB SMOTE
+pred.xgb.smote = predict(caret.xgb.smote, test_new)
+pred.xgb.smote1 = data.frame(pred.xgb.smote)
+pred.xgb.smote1
+```
+
